@@ -1,0 +1,25 @@
+docker build --build-arg VITE_API_BASE_URL=http://localhost:4000 -t portfolio-frontend .
+
+
+docker run -d -p 5173:80 --name react-app portfolio-frontend
+
+
+# 1. Tag Backend Image
+docker tag portfolio-backend rockzoom2/portfolio-backend:v1.0
+
+# 2. Push Backend Image to Docker Hub
+docker push rockzoom2/portfolio-backend:v1.0
+
+# 3. Tag Frontend Image
+docker tag portfolio-frontend rockzoom2/portfolio-frontend:v1.0
+
+# 4. Push Frontend Image to Docker Hub
+docker push rockzoom2/portfolio-frontend:v1.0
+
+# Create a temporary container using your volume data and commit it as an image
+docker run --name temp-data-container -v portfolio-uploads:/app/uploads alpine true
+docker commit temp-data-container YOUR_DOCKERHUB_USERNAME/portfolio-uploads-data:v1.0
+docker rm temp-data-container
+
+# Push to Docker Hub
+docker push rockzoom2/portfolio-uploads-data:v1.0
