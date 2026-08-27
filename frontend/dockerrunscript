@@ -23,3 +23,20 @@ docker rm temp-data-container
 
 # Push to Docker Hub
 docker push rockzoom2/portfolio-uploads-data:v1.0
+
+
+# Create volume on target server
+docker volume create portfolio-uploads
+
+# Pull & Run Backend
+docker run -d `
+  -p 4000:4000 `
+  --name nestjs-app `
+  -v portfolio-uploads:/app/uploads `
+  YOUR_DOCKERHUB_USERNAME/portfolio-backend:v1.0
+
+# Pull & Run Frontend
+docker run -d `
+  -p 3000:80 `
+  --name react-app `
+  YOUR_DOCKERHUB_USERNAME/portfolio-frontend:v1.0
