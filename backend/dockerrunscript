@@ -1,0 +1,20 @@
+docker stop nestjs-app
+
+docker rm nestjs-app
+
+docker run -d `
+  -p 4000:4000 `
+  --name nestjs-app `
+  -e PORT=4000 `
+  -e NODE_ENV=production `
+  -e JWT_SECRET="your_super_secret_jwt_key_here_12345" `
+  -e ADMIN_EMAIL="aathifinfo116@gmail.com" `
+  -e ADMIN_PASSWORD="ChangeThisPassword123!" `
+  -e DB_HOST="host.docker.internal" `
+  -e DB_PORT=5432 `
+  -e DB_USERNAME="postgres" `
+  -e DB_PASSWORD="aATHIF123#" `
+  -e DB_NAME="portfolio" `
+  -e DATABASE_URL="postgres://postgres:aATHIF123%23@host.docker.internal:5432/portfolio" `
+  -v C:\Users\Aathif\Documents\AATHIF\Claude\portfolio-website\backend\uploads:/app/uploads `
+  portfolio-backend
