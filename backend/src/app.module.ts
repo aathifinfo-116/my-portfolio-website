@@ -53,6 +53,14 @@ const STATIC_MIME: Record<string, string> = {
         // Convenient in development; production should run migrations instead.
         synchronize: config.get<boolean>('database.synchronize', false),
         logging: config.get<boolean>('database.logging', false),
+        ssl: {
+          rejectUnauthorized: false,
+        },
+        extra: {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        },
       }),
     }),
 
