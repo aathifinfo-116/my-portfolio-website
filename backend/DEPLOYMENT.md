@@ -124,6 +124,52 @@ log, which is where DI or connection errors surface.
 
 ---
 
+## Troubleshooting "Could not reach the server" with a 200 in DevTools
+
+DevTools shows `200 OK`, but the Response tab says *Failed to load response
+data* and the app reports a network error. That combination is always CORS:
+the response arrived, and the browser refused to let JavaScript read it
+because `Access-Control-Allow-Origin` did not match the page's origin. Axios
+sees no response object at all, so `extractErrorMessage` falls through to
+"Could not reach the server. Is the API running?".
+
+The fix is on the **backend**: `CORS_ORIGINS` must contain the exact origin the
+browser is on — scheme included, no trailing slash.
+
+Vercel mints a new subdomain per deployment, so entries may contain `*`, which
+matches within a single label:
+
+```
+CORS_ORIGINS=https://my-portfolio-frontend-*.vercel.app,http://localhost:5173
+```
+
+That allows every preview deployment of that project. It does not allow
+`https://evil.vercel.app`, `https://my-portfolio-frontend-x.evil.vercel.app`,
+or the same host over plain `http`.
+
+Redeploy the backend after changing it — the value is read at boot.
+
+---
+
+## ⚠️ Stored file URLs are absolute and baked in at write time
+
+`storage.service.ts` and `document-sync.service.ts` compose
+`${PUBLIC_BASE_URL}/static/...` and persist the **whole URL** in the database.
+Rows seeded locally therefore contain `http://localhost:4000/...` forever;
+changing `PUBLIC_BASE_URL` on Vercel does not rewrite them.
+
+Because your local and deployed backends share one Aiven database, the
+deployed API returns those localhost URLs. Two failures follow: the host is
+unreachable from a visitor's browser, and `http://` assets on an `https://`
+page are blocked as mixed content regardless.
+
+Re-running the seed/sync with `PUBLIC_BASE_URL` set to the deployed origin
+rewrites the rows — but the files themselves still are not deployed, so see
+the file-storage section below. Storing relative paths and resolving them at
+response time would remove this class of problem entirely.
+
+---
+
 ## Troubleshooting `FUNCTION_INVOCATION_FAILED`
 
 The build succeeded and the deployment says **Ready**, but every request

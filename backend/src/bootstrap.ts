@@ -6,6 +6,27 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 /**
+ * Matches a request Origin against the configured allow-list.
+ *
+ * Entries may contain `*`, which matches within one label only:
+ * `https://my-app-*.vercel.app` allows every preview deployment of that
+ * project but not `https://evil.vercel.app`. Vercel mints a new subdomain per
+ * deployment, so an exact-match-only list goes stale constantly.
+ */
+function isAllowedOrigin(origin: string, allowList: string[]): boolean {
+  return allowList.some((entry) => {
+    if (!entry.includes('*')) return entry === origin;
+
+    const pattern = entry
+      .split('*')
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('[^.]*');
+
+    return new RegExp(`^${pattern}$`).test(origin);
+  });
+}
+
+/**
  * Builds and configures the Nest application without starting a listener.
  *
  * Shared by the local dev entry point (src/main.ts, which calls listen) and
@@ -47,7 +68,18 @@ export async function createApp(): Promise<INestApplication> {
 
   app.enableCors({
     // An empty list would mean "reflect any origin"; fail closed instead.
-    origin: corsOrigins.length > 0 ? corsOrigins : false,
+    origin:
+      corsOrigins.length > 0
+        ? (
+            origin: string | undefined,
+            callback: (err: Error | null, allow?: boolean) => void,
+          ) => {
+            // No Origin header at all: curl, server-to-server, same-origin
+            // navigation. CORS does not apply, so let it through.
+            if (!origin) return callback(null, true);
+            callback(null, isAllowedOrigin(origin, corsOrigins));
+          }
+        : false,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
