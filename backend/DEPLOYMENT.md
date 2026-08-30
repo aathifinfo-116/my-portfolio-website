@@ -124,6 +124,50 @@ log, which is where DI or connection errors surface.
 
 ---
 
+## Troubleshooting `FUNCTION_INVOCATION_FAILED`
+
+The build succeeded and the deployment says **Ready**, but every request
+returns `500: INTERNAL_SERVER_ERROR / FUNCTION_INVOCATION_FAILED`. That is a
+crash *inside* the function, not a build problem, so the build log will not
+mention it.
+
+**Most likely: environment variables are missing.** `env.validation.ts` marks
+`DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`,
+`ADMIN_EMAIL` and `ADMIN_PASSWORD` as required, and `ConfigModule` throws
+during `NestFactory.create` when one is absent — the same
+`Config validation error: "DB_HOST" is required` you would see locally. A
+project deployed without opening the Environment Variables panel fails here
+every time.
+
+Note there is no `.env` in the deployment: `.env` is gitignored, so the
+Vercel dashboard is the *only* source of these values.
+
+**To see the real error:** Vercel → your project → **Logs** (or Observability
+→ Logs), then reload the failing URL. `api/index.ts` catches boot failures and
+writes the full stack there with a `[boot]` prefix.
+
+To surface the message in the HTTP response instead — useful when the log
+viewer is awkward — add `DEBUG_BOOT=1` to the environment variables and
+redeploy. The response body then carries the reason:
+
+```json
+{ "statusCode": 500, "error": "Boot failure", "message": "..." }
+```
+
+Remove it once fixed; the message can name your database host and user.
+
+**Other causes, in rough order of likelihood:**
+
+| Message in the log | Cause |
+|---|---|
+| `Config validation error: "X" is required` | Missing environment variable |
+| `no pg_hba.conf entry ... no encryption` | `DB_SSL` set to `false` against a managed database |
+| `password authentication failed` | Wrong `DB_PASSWORD`, or Aiven's IP allow-list excludes Vercel |
+| `Cannot find module '../dist/bootstrap'` | `nest build` did not run — check `buildCommand` in `vercel.json` |
+| `relation "profile" does not exist` | Schema was never created in the production database |
+
+---
+
 ## ⚠️ Files will not work in production
 
 Two independent reasons:
