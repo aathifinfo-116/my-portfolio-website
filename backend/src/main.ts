@@ -12,8 +12,12 @@ async function bootstrap() {
 
   const port = config.get<number>('app.port', 4000);
   const apiPrefix = config.get<string>('app.apiPrefix', 'api');
-  const corsOrigins = config.get<string[]>('app.corsOrigins', []);
-  const isProduction = config.get<string>('app.env') === 'production';
+
+  // Parse CORS origins cleanly whether passed as an array or comma-separated string from .env
+  const rawCors = config.get<string | string[]>('app.corsOrigins', []);
+  const corsOrigins = typeof rawCors === 'string'
+    ? rawCors.split(',').map((origin) => origin.trim())
+    : rawCors;
 
   // Applies to controllers only; ServeStaticModule keeps serving /static
   // from the root, which is where upload URLs point.
@@ -41,7 +45,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: corsOrigins,
+    origin: corsOrigins.length > 0 ? corsOrigins : true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   });
@@ -58,24 +62,31 @@ async function bootstrap() {
   // Trust the reverse proxy so req.ip is the real client IP behind Nginx.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  if (!isProduction) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('Portfolio API')
-      .setDescription('Backend API for the Aathif Thahir portfolio site')
-      .setVersion('1.0')
-      .addBearerAuth()
-      .build();
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup(`${apiPrefix}/docs`, app, document);
-  }
+  // Swagger setup configured for both local development and Vercel deployment.
+  // Serves Swagger UI via CDN to prevent serverless bundle path errors on Vercel.
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Portfolio API')
+    .setDescription('Backend API for the Aathif Thahir portfolio site')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+
+  SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {
+    customCssUrl:
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css',
+    customJs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.js',
+    ],
+  });
 
   app.enableShutdownHooks();
 
   await app.listen(port);
   logger.log(`API ready on http://localhost:${port}/${apiPrefix}`);
-  if (!isProduction) {
-    logger.log(`Swagger docs on http://localhost:${port}/${apiPrefix}/docs`);
-  }
+  logger.log(`Swagger docs on http://localhost:${port}/${apiPrefix}/docs`);
 }
 
 void bootstrap();
