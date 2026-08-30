@@ -7,8 +7,6 @@ export interface AppConfig {
 }
 
 export interface DatabaseConfig {
-  /** Full connection string. When set, it wins over the discrete fields. */
-  url?: string;
   host: string;
   port: number;
   username: string;
@@ -16,12 +14,6 @@ export interface DatabaseConfig {
   database: string;
   synchronize: boolean;
   logging: boolean;
-  ssl: boolean;
-  /**
-   * Pool ceiling per process. Serverless runs many short-lived instances, so
-   * each must hold very few connections or the database's limit is exhausted.
-   */
-  poolSize: number;
 }
 
 export interface JwtConfig {
@@ -47,7 +39,6 @@ export default () => ({
     publicBaseUrl: process.env.PUBLIC_BASE_URL ?? 'http://localhost:4000',
   } satisfies AppConfig,
   database: {
-    url: process.env.DATABASE_URL || undefined,
     host: process.env.DB_HOST ?? 'localhost',
     port: parseInt(process.env.DB_PORT ?? '5432', 10),
     username: process.env.DB_USERNAME ?? 'postgres',
@@ -55,16 +46,6 @@ export default () => ({
     database: process.env.DB_NAME ?? 'portfolio',
     synchronize: process.env.DB_SYNCHRONIZE === 'true',
     logging: process.env.DB_LOGGING === 'true',
-    // Managed Postgres (Neon, Supabase, Aiven, Render) requires TLS; a local
-    // instance normally does not.
-    ssl: process.env.DB_SSL
-      ? process.env.DB_SSL === 'true'
-      : process.env.NODE_ENV === 'production',
-    poolSize: parseInt(
-      process.env.DB_POOL_SIZE ??
-        (process.env.VERCEL ? '1' : '10'),
-      10,
-    ),
   } satisfies DatabaseConfig,
   jwt: {
     secret: process.env.JWT_SECRET as string,

@@ -3,7 +3,6 @@ import {
   Injectable,
   Logger,
   PayloadTooLargeException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -195,18 +194,6 @@ export class StorageService {
     if (file.size > this.maxBytes) {
       throw new PayloadTooLargeException(
         `File exceeds the ${Math.round(this.maxBytes / 1024 / 1024)}MB limit.`,
-      );
-    }
-
-    // Vercel functions run on a read-only, ephemeral filesystem. Writing
-    // would either throw EROFS or succeed into /tmp and vanish on the next
-    // cold start, leaving a database row pointing at nothing. Fail with an
-    // explanation instead of producing silently broken records.
-    if (process.env.VERCEL) {
-      throw new ServiceUnavailableException(
-        'File uploads are disabled on this deployment: serverless storage is ' +
-          'ephemeral. Configure a cloud storage driver (S3, Cloudinary, ' +
-          'Supabase Storage) to enable uploads in production.',
       );
     }
 
