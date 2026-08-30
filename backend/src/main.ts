@@ -84,9 +84,15 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  await app.listen(port);
-  logger.log(`API ready on http://localhost:${port}/${apiPrefix}`);
-  logger.log(`Swagger docs on http://localhost:${port}/${apiPrefix}/docs`);
+  if (process.env.NODE_ENV !== 'production') {
+    await app.listen(port);
+    logger.log(`API ready on http://localhost:${port}/${apiPrefix}`);
+    logger.log(`Swagger docs on http://localhost:${port}/${apiPrefix}/docs`);
+  }
+
+  await app.init();
+  return app.getHttpAdapter().getInstance();
 }
 
-void bootstrap();
+// Export server handler for Vercel serverless execution
+export default bootstrap();
