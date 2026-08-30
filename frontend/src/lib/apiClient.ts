@@ -2,14 +2,38 @@ import axios, { AxiosError } from 'axios';
 import type { ApiErrorBody } from '@/types/api';
 
 /**
+ * Normalises VITE_API_BASE_URL into a bare origin.
+ *
+ * The two mistakes this absorbs, both of which fail confusingly:
+ *
+ * - A missing scheme. `my-api.vercel.app` is a *relative path*, so the browser
+ *   resolves it against the page origin and requests
+ *   `https://frontend.vercel.app/my-api.vercel.app/api/...`, which 404s on the
+ *   frontend rather than reaching the API at all.
+ * - A trailing `/api`. This module appends `/api` itself, so the value ending
+ *   in `/api` would produce `/api/api/profile`.
+ *
+ * A value starting with `/` is left alone: that is a deliberate same-origin
+ * path, which is how the Vite dev proxy is used.
+ */
+function normaliseApiBase(raw: string | undefined): string {
+  const value = (raw ?? '').trim();
+  if (!value || value.startsWith('/')) return '';
+
+  const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+
+  return withScheme.replace(/\/+$/, '').replace(/\/api$/i, '');
+}
+
+/**
  * Empty base URL means requests go to the same origin as `/api/...`, which the
  * Vite dev proxy forwards to the Nest server. Set VITE_API_BASE_URL when the
  * frontend is deployed to a different host than the API.
  */
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? '';
+const baseURL = normaliseApiBase(import.meta.env.VITE_API_BASE_URL);
 
 export const apiClient = axios.create({
-  baseURL: baseURL ? `${baseURL.replace(/\/$/, '')}/api` : '/api',
+  baseURL: baseURL ? `${baseURL}/api` : '/api',
   timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -68,7 +92,7 @@ export function extractErrorMessage(
 export function resolveFileUrl(url: string | null | undefined): string | null {
   if (!url) return null;
 
-  const trimmedBase = baseURL.replace(/\/$/, '');
+  const trimmedBase = baseURL;
 
   if (/^https?:\/\//i.test(url)) {
     if (trimmedBase) return url;
