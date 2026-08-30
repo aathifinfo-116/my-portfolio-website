@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   PayloadTooLargeException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -205,6 +206,17 @@ export class StorageService {
       }
       return cleaned;
     });
+
+    // Vercel functions run on a read-only, ephemeral filesystem. Writing
+    // would throw EROFS, or succeed into /tmp and vanish on the next cold
+    // start, leaving a database row pointing at nothing.
+    if (process.env.VERCEL) {
+      throw new ServiceUnavailableException(
+        'File uploads are disabled on this deployment: serverless storage is ' +
+          'ephemeral. Configure a cloud storage driver (S3, Cloudinary, ' +
+          'Supabase Storage) to enable uploads in production.',
+      );
+    }
 
     const targetDir = path.join(this.uploadDir, ...safeSegments);
     await fs.mkdir(targetDir, { recursive: true });

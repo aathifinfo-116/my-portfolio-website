@@ -10,11 +10,32 @@ export const envValidationSchema = Joi.object({
   CORS_ORIGINS: Joi.string().default('http://localhost:5173'),
   PUBLIC_BASE_URL: Joi.string().uri().default('http://localhost:4000'),
 
-  DB_HOST: Joi.string().required(),
+  // Either a single DATABASE_URL (what managed providers hand you) or the
+  // discrete DB_* fields, which are required only when no URL is present.
+  DATABASE_URL: Joi.string().uri({ scheme: ['postgres', 'postgresql'] }),
+  DB_HOST: Joi.string().when('DATABASE_URL', {
+    is: Joi.exist(),
+    then: Joi.optional(),
+    otherwise: Joi.required(),
+  }),
   DB_PORT: Joi.number().default(5432),
-  DB_USERNAME: Joi.string().required(),
-  DB_PASSWORD: Joi.string().allow('').required(),
-  DB_NAME: Joi.string().required(),
+  DB_USERNAME: Joi.string().when('DATABASE_URL', {
+    is: Joi.exist(),
+    then: Joi.optional(),
+    otherwise: Joi.required(),
+  }),
+  DB_PASSWORD: Joi.string().allow('').when('DATABASE_URL', {
+    is: Joi.exist(),
+    then: Joi.optional(),
+    otherwise: Joi.required(),
+  }),
+  DB_NAME: Joi.string().when('DATABASE_URL', {
+    is: Joi.exist(),
+    then: Joi.optional(),
+    otherwise: Joi.required(),
+  }),
+  DB_SSL: Joi.string().valid('true', 'false'),
+  DB_POOL_SIZE: Joi.number().min(1).max(50),
   DB_SYNCHRONIZE: Joi.string().valid('true', 'false').default('false'),
   DB_LOGGING: Joi.string().valid('true', 'false').default('false'),
 
