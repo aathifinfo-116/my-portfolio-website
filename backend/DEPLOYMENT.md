@@ -38,7 +38,15 @@ that metadata — compiling the decorated source through esbuild produces
 `Nest can't resolve dependencies` at runtime. `vercel.json` runs `nest build`
 (tsc, which does emit it) first, and the handler imports the compiled output.
 
-**2. The handler caches the in-flight promise.**
+**2. `outputDirectory` points at an empty `public/`.**
+With the "Other" preset, Vercel's output directory defaults to `public` when
+it exists and **the project root otherwise** — and static files are matched
+*before* `rewrites`. Leaving it unset would publish the repository root, so
+`/package.json`, `/tsconfig.json` and the compiled `/dist/...` would be
+downloadable as plain text. An empty `public/` publishes nothing, and every
+request falls through the rewrite to the function.
+
+**3. The handler caches the in-flight promise.**
 A warm Lambda reuses module scope, so the Nest app — and its TypeORM pool — is
 built once. Caching the *promise* rather than the resolved app means
 concurrent cold-start requests share one initialisation instead of racing to
@@ -84,14 +92,23 @@ validation accepts either.
 
 ### 3. Point the frontend at the backend
 
-In the **frontend** Vercel project:
+Vercel dashboard → the **frontend** project (`aathif-thahir-profile`) →
+Settings → Environment Variables → Add:
 
-```
-VITE_API_BASE_URL=https://<your-backend>.vercel.app
-```
+| Key | Value | Environments |
+|---|---|---|
+| `VITE_API_BASE_URL` | `https://<your-backend>.vercel.app` | Production, Preview, Development |
+
+**Origin only.** No trailing slash and no `/api` suffix —
+`src/lib/apiClient.ts` appends `/api` itself, so a value ending in `/api`
+produces requests to `/api/api/profile`.
+
+Vite inlines `import.meta.env.*` at **build** time, so the variable has no
+effect on the deployment already built. After saving it, go to Deployments →
+the latest one → ⋯ → **Redeploy**.
 
 Without it the frontend calls same-origin `/api`, which does not exist on the
-frontend deployment. Redeploy the frontend after adding it.
+frontend deployment.
 
 ### 4. Verify
 

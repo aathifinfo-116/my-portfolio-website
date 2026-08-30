@@ -1,0 +1,2 @@
+# Vercel needs an output directory. Deliberately empty: every request is
+# rewritten to the serverless function in api/index.ts.
