@@ -85,6 +85,14 @@ async function migrate() {
   }
 
   const uploadDir = path.resolve(process.env.UPLOAD_DIR ?? './uploads');
+  // Must match StorageService's prefix, or files land beside the ones the
+  // running app writes rather than in the same tree.
+  const prefix = (process.env.BLOB_PATH_PREFIX ?? 'uploads').replace(
+    /^\/+|\/+$/g,
+    '',
+  );
+  const blobPath = (relative: string) =>
+    prefix ? `${prefix}/${relative}` : relative;
   const app = await NestFactory.createApplicationContext(AppModule, {
     // 'log' must be present or this script's own report is suppressed;
     // 'debug'/'verbose' are left out to keep TypeORM quiet.
@@ -94,6 +102,10 @@ async function migrate() {
   try {
     const files = await walk(uploadDir);
     logger.log(`Found ${files.length} files under ${uploadDir}`);
+    logger.log(
+      `Blob pathnames will be prefixed with "${prefix || '(none)'}"` +
+        ' — set BLOB_PATH_PREFIX to change it.',
+    );
 
     if (!apply) {
       logger.warn('DRY RUN — nothing will be uploaded or written.');
@@ -113,13 +125,15 @@ async function migrate() {
         'application/octet-stream';
 
       if (!apply) {
-        logger.log(`  would upload  ${relative}  (${size} bytes, ${contentType})`);
+        logger.log(
+          `  would upload  ${blobPath(relative)}  (${size} bytes, ${contentType})`,
+        );
         totalBytes += size;
         continue;
       }
 
       try {
-        const blob = await put(relative, await fs.readFile(absolute), {
+        const blob = await put(blobPath(relative), await fs.readFile(absolute), {
           access: 'public',
           contentType,
           // Pathnames must mirror uploads/ exactly so a re-run overwrites the
@@ -129,7 +143,7 @@ async function migrate() {
         });
         uploaded.set(relative, blob.url);
         totalBytes += size;
-        logger.log(`  uploaded  ${relative}`);
+        logger.log(`  uploaded  ${blobPath(relative)}`);
       } catch (error) {
         failed += 1;
         logger.error(`  FAILED    ${relative}: ${(error as Error).message}`);

@@ -58,6 +58,8 @@ export const envValidationSchema = Joi.object({
   // on its absence would break a deployment that works. When it is genuinely
   // missing, @vercel/blob raises its own explicit error at upload time.
   BLOB_READ_WRITE_TOKEN: Joi.string().optional(),
+  // Empty string is meaningful (store at the root), so allow it explicitly.
+  BLOB_PATH_PREFIX: Joi.string().allow('').optional(),
   UPLOAD_DIR: Joi.string().default('./uploads'),
   MAX_UPLOAD_MB: Joi.number().default(10),
 });

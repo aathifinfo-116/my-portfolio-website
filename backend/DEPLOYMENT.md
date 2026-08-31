@@ -225,9 +225,18 @@ gitignored, so the local driver cannot serve or accept files on Vercel. The
 Vercel → Storage → Create → Blob. Then **Connect to Project** → your backend
 project → Production + Preview.
 
-Tick **"Add a read-write token env var to this connection."** This is
-required, not optional. Connecting a store creates only `BLOB_STORE_ID` and
-`BLOB_WEBHOOK_PUBLIC_KEY`, and the SDK refuses to upload with those alone:
+The store needs `BLOB_READ_WRITE_TOKEN`. A **public** store is still an
+authenticated one to write to — "public" governs who may read the stored
+files, not who may upload them.
+
+If the connect dialog offers **"Add a read-write token env var to this
+connection"**, tick it. If that option is absent, the token has been revoked
+(Vercel's Connections page offers a **Revoke Token** button and recommends it
+for OIDC): go to **Settings → Restore Read-Write Token → Restore Token**,
+which re-adds the variable to every project holding a `BLOB_STORE_ID`.
+
+Connecting alone creates only `BLOB_STORE_ID` and `BLOB_WEBHOOK_PUBLIC_KEY`,
+and the SDK refuses to upload with those:
 
 ```
 Vercel Blob: No blob credentials found. Pass a `token` option, set
@@ -258,7 +267,11 @@ npm run migrate:blob -- --apply
 ```
 
 This uploads each file under `uploads/` to a blob whose pathname mirrors the
-folder layout (`documents/devops/x.pdf` stays `documents/devops/x.pdf`), then
+local tree, including the `uploads/` folder itself:
+`backend/uploads/documents/devops/x.pdf` becomes the blob
+`uploads/documents/devops/x.pdf`. Set `BLOB_PATH_PREFIX` to change that folder,
+or to `''` to store at the store root — `StorageService` and this script read
+the same variable, so they cannot drift apart. Then it
 rewrites `profile.avatarUrl`, `profile.resumeUrl`, `documents.fileUrl`,
 `projects.imageUrl`, `certifications.documentUrl`, `certifications.badgeUrl`
 and `awards.imageUrl` to the returned public URLs.

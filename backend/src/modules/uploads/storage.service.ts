@@ -82,9 +82,11 @@ export class StorageService {
   private readonly publicBaseUrl: string;
   private readonly maxBytes: number;
   private readonly driver: string;
+  private readonly blobPrefix: string;
 
   constructor(private readonly config: ConfigService) {
     this.driver = this.config.get<string>('storage.driver', 'local');
+    this.blobPrefix = this.config.get<string>('storage.blobPrefix', 'uploads');
     this.uploadDir = path.resolve(
       this.config.get<string>('storage.uploadDir', './uploads'),
     );
@@ -283,7 +285,9 @@ export class StorageService {
     const base = path.basename(file.originalname);
     const extension = path.extname(base).toLowerCase().slice(0, 10);
     const name = keepName ? base : `${randomUUID()}${extension}`;
-    const pathname = [...segments, name].join('/');
+    // Prefixed so the blob store mirrors the local uploads/ tree exactly:
+    // uploads/documents/devops/x.pdf in both places.
+    const pathname = [...(this.blobPrefix ? [this.blobPrefix] : []), ...segments, name].join('/');
 
     let blob: Awaited<ReturnType<typeof put>>;
     try {
@@ -298,14 +302,15 @@ export class StorageService {
       this.logger.error(`Blob upload failed for "${pathname}": ${message}`);
 
       // The SDK's credential error is the single most likely failure here and
-      // reads as a bare 500 in the admin portal otherwise. Connecting a store
-      // to a project does NOT create this variable unless the "read-write
-      // token" box is ticked.
+      // reads as a bare 500 in the admin portal otherwise. A "public" store is
+      // not the same as an unauthenticated one: public governs read access to
+      // the stored files, never the right to write them.
       if (message.includes('No blob credentials found')) {
         throw new ServiceUnavailableException(
-          'Blob storage is not authenticated. Add BLOB_READ_WRITE_TOKEN to ' +
-            'this project: Vercel → Storage → your Blob store → Connect to ' +
-            'Project → tick "Add a read-write token env var", then redeploy.',
+          'Blob storage is not authenticated: BLOB_READ_WRITE_TOKEN is ' +
+            'missing. In Vercel → Storage → your Blob store → Settings, click ' +
+            '"Restore Read-Write Token" (the connect dialog stops offering it ' +
+            'once the token has been revoked), then redeploy.',
         );
       }
 

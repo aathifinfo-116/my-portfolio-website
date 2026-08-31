@@ -30,6 +30,8 @@ export interface StorageConfig {
   driver: 'local' | 'vercel-blob' | 'cloudinary' | 's3';
   uploadDir: string;
   maxUploadBytes: number;
+  /** Folder every blob pathname sits under; '' stores at the store root. */
+  blobPrefix: string;
 }
 
 /**
@@ -89,6 +91,13 @@ export default () => ({
     driver: (process.env.STORAGE_DRIVER ?? 'local') as StorageConfig['driver'],
     uploadDir: process.env.UPLOAD_DIR ?? './uploads',
     maxUploadBytes: parseInt(process.env.MAX_UPLOAD_MB ?? '10', 10) * 1024 * 1024,
+    // Mirrors the local uploads/ folder inside the blob store, so a pathname
+    // reads the same in both places. Set BLOB_PATH_PREFIX='' to store at the
+    // store root instead.
+    blobPrefix: (process.env.BLOB_PATH_PREFIX ?? 'uploads').replace(
+      /^\/+|\/+$/g,
+      '',
+    ),
   } satisfies StorageConfig,
   admin: {
     email: process.env.ADMIN_EMAIL ?? 'admin@example.com',
