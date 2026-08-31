@@ -225,10 +225,21 @@ gitignored, so the local driver cannot serve or accept files on Vercel. The
 Vercel → Storage → Create → Blob. Then **Connect to Project** → your backend
 project → Production + Preview.
 
-Tick **"Add a read-write token env var to this connection."** Connected
-projects authenticate over OIDC without it, but `BLOB_READ_WRITE_TOKEN` is
-what the local migration script needs. (Alternative: `vercel link` then
-`vercel env pull .env.vercel`.)
+Tick **"Add a read-write token env var to this connection."** This is
+required, not optional. Connecting a store creates only `BLOB_STORE_ID` and
+`BLOB_WEBHOOK_PUBLIC_KEY`, and the SDK refuses to upload with those alone:
+
+```
+Vercel Blob: No blob credentials found. Pass a `token` option, set
+`BLOB_READ_WRITE_TOKEN`, or use `oidcToken` (or `VERCEL_OIDC_TOKEN`) with
+`storeId` or `BLOB_STORE_ID`.
+```
+
+Every upload returns 500 until `BLOB_READ_WRITE_TOKEN` exists. Redeploy the
+backend after adding it — environment variables are only read at boot.
+
+The same variable is what the local migration script needs. To fetch it into
+`backend/.env`: `vercel link` then `vercel env pull .env.vercel`.
 
 ### 2. Migrate the existing files
 

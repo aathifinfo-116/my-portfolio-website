@@ -285,12 +285,34 @@ export class StorageService {
     const name = keepName ? base : `${randomUUID()}${extension}`;
     const pathname = [...segments, name].join('/');
 
-    const blob = await put(pathname, file.buffer, {
-      access: 'public',
-      contentType: file.mimetype,
-      addRandomSuffix: !keepName,
-      allowOverwrite: keepName,
-    });
+    let blob: Awaited<ReturnType<typeof put>>;
+    try {
+      blob = await put(pathname, file.buffer, {
+        access: 'public',
+        contentType: file.mimetype,
+        addRandomSuffix: !keepName,
+        allowOverwrite: keepName,
+      });
+    } catch (error) {
+      const message = (error as Error).message ?? '';
+      this.logger.error(`Blob upload failed for "${pathname}": ${message}`);
+
+      // The SDK's credential error is the single most likely failure here and
+      // reads as a bare 500 in the admin portal otherwise. Connecting a store
+      // to a project does NOT create this variable unless the "read-write
+      // token" box is ticked.
+      if (message.includes('No blob credentials found')) {
+        throw new ServiceUnavailableException(
+          'Blob storage is not authenticated. Add BLOB_READ_WRITE_TOKEN to ' +
+            'this project: Vercel → Storage → your Blob store → Connect to ' +
+            'Project → tick "Add a read-write token env var", then redeploy.',
+        );
+      }
+
+      throw new ServiceUnavailableException(
+        `Blob storage rejected the upload: ${message}`,
+      );
+    }
 
     return {
       url: blob.url,
