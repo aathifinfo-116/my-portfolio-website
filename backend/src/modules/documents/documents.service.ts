@@ -188,22 +188,19 @@ export class DocumentsService {
       );
     }
 
-    const absolutePath = this.storage.resolveStoredPath(dto.fileUrl);
-    if (!absolutePath) {
-      throw new BadRequestException('fileUrl does not point at stored content.');
-    }
-
-    let size: number;
-    try {
-      const stats = await fs.stat(absolutePath);
-      size = stats.size;
-    } catch {
+    // Driver-agnostic: resolves a local /static path or a blob URL alike.
+    // Reading the size from the object rather than the request is what keeps
+    // fileSizeBytes honest.
+    const stored = await this.storage.statStored(dto.fileUrl);
+    if (!stored) {
       throw new BadRequestException(
-        'The uploaded file could not be found on disk.',
+        'fileUrl does not point at stored content. Upload the file first, ' +
+          'then submit the URL the upload returned.',
       );
     }
 
-    const fileName = dto.fileName ?? path.basename(absolutePath);
+    const size = stored.size;
+    const fileName = dto.fileName ?? stored.fileName;
     const extension = path.extname(fileName).toLowerCase();
     const fileType = EXTENSION_FILE_TYPE[extension];
 

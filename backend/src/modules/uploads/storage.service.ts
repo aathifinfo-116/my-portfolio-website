@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { del, put } from '@vercel/blob';
+import { del, head, put } from '@vercel/blob';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -122,6 +122,21 @@ export class StorageService {
     });
   }
 
+  /**
+   * Certification document filed under its category, e.g.
+   * certifications/professional, mirroring how study materials are filed by
+   * domain. The name is preserved so the stored file stays recognisable.
+   */
+  saveCertificationForCategory(
+    file: Express.Multer.File,
+    categoryFolder: string,
+  ): Promise<StoredFile> {
+    return this.saveTo(file, ['certifications', categoryFolder], {
+      allowedMime: ALLOWED_DOCUMENT_MIME,
+      keepName: true,
+    });
+  }
+
   saveBadge(file: Express.Multer.File): Promise<StoredFile> {
     return this.saveTo(file, [...UPLOAD_TARGETS.badge], {
       allowedMime: ALLOWED_IMAGE_MIME,
@@ -158,6 +173,46 @@ export class StorageService {
   /** Study materials additionally accept Word and PowerPoint. */
   saveStudyMaterial(file: Express.Multer.File): Promise<StoredFile> {
     return this.persist(file, 'documents', ALLOWED_STUDY_MATERIAL_MIME);
+  }
+
+  /**
+   * Size and filename for a URL this service previously handed out, whichever
+   * driver produced it. Returns null when the URL is not ours or the content
+   * is gone.
+   *
+   * Callers use this instead of trusting client-supplied metadata, so a stored
+   * fileSizeBytes can never disagree with the actual object.
+   */
+  async statStored(
+    url: string | null | undefined,
+  ): Promise<{ size: number; fileName: string } | null> {
+    if (!url) return null;
+
+    if (isBlobUrl(url)) {
+      try {
+        const meta = await head(url);
+        return {
+          size: meta.size,
+          // Blob pathnames are percent-encoded in the URL.
+          fileName: decodeURIComponent(path.posix.basename(meta.pathname)),
+        };
+      } catch (error) {
+        this.logger.warn(
+          `Could not stat blob ${url}: ${(error as Error).message}`,
+        );
+        return null;
+      }
+    }
+
+    const absolutePath = this.resolveStoredPath(url);
+    if (!absolutePath) return null;
+
+    try {
+      const stats = await fs.stat(absolutePath);
+      return { size: stats.size, fileName: path.basename(absolutePath) };
+    } catch {
+      return null;
+    }
   }
 
   /**

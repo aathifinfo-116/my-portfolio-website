@@ -13,6 +13,16 @@ import {
   type CertificationCategory,
 } from '@/types/api';
 
+/**
+ * Mirrors CATEGORY_FOLDER in the backend's uploads.controller — shown as a
+ * hint so the folder a certificate will land in is visible before uploading.
+ */
+const CATEGORY_FOLDER: Record<CertificationCategory, string> = {
+  'Academic Degree': 'academic-degree',
+  Professional: 'professional',
+  Certification: 'certification',
+};
+
 interface CertificationForm {
   title: string;
   institution: string;
@@ -158,6 +168,11 @@ export function CertificationsPage() {
                 endpoint="/uploads/badge"
                 accept="image/*"
               />
+              {/*
+                The endpoint carries the category, so the certificate lands in
+                uploads/certifications/{category}. Changing the category before
+                uploading changes where the file is written.
+              */}
               <FileField
                 label="Certificate PDF"
                 value={form.documentUrl}
@@ -165,8 +180,9 @@ export function CertificationsPage() {
                   set('documentUrl', url);
                   if (meta) set('documentName', meta.fileName);
                 }}
-                endpoint="/uploads/document"
+                endpoint={`/uploads/certification/${form.category}`}
                 accept="application/pdf"
+                hint={`certifications/${CATEGORY_FOLDER[form.category] ?? ''}`}
               />
             </div>
 

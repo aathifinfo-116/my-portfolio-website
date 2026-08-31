@@ -9,6 +9,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { CertificationCategory } from '../certifications/entities/certification.entity';
 import { DocumentDomain } from '../documents/entities/document.entity';
 import { StorageService } from './storage.service';
 
@@ -36,6 +37,33 @@ export function resolveDomainFolder(value: string): string {
 
   throw new BadRequestException(
     `Unknown domain "${value}". Expected one of: ${Object.keys(DOMAIN_FOLDER).join(', ')}.`,
+  );
+}
+
+/** Display category -> folder name under uploads/certifications. */
+export const CATEGORY_FOLDER: Record<CertificationCategory, string> = {
+  [CertificationCategory.ACADEMIC_DEGREE]: 'academic-degree',
+  [CertificationCategory.PROFESSIONAL]: 'professional',
+  [CertificationCategory.CERTIFICATION]: 'certification',
+};
+
+/**
+ * Accepts the display name ("Academic Degree") or the folder name
+ * ("academic-degree"). The admin form sends the display name straight from
+ * the select, so both spellings have to work.
+ */
+export function resolveCategoryFolder(value: string): string {
+  const direct = CATEGORY_FOLDER[value as CertificationCategory];
+  if (direct) return direct;
+
+  const lowered = value.toLowerCase();
+  const match = Object.values(CATEGORY_FOLDER).find(
+    (folder) => folder === lowered,
+  );
+  if (match) return match;
+
+  throw new BadRequestException(
+    `Unknown category "${value}". Expected one of: ${Object.keys(CATEGORY_FOLDER).join(', ')}.`,
   );
 }
 
@@ -96,7 +124,23 @@ export class UploadsController {
     );
   }
 
-  /** Generic PDF/image fallbacks, kept for the certification document field. */
+  /**
+   * Routes the certificate into uploads/certifications/{category}, mirroring
+   * how study materials are filed by domain.
+   */
+  @Post('certification/:category')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadCertification(
+    @Param('category') category: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.storage.saveCertificationForCategory(
+      file,
+      resolveCategoryFolder(category),
+    );
+  }
+
+  /** Generic PDF/image fallbacks, kept as an uncategorised escape hatch. */
   @Post('document')
   @UseInterceptors(FileInterceptor('file'))
   uploadGenericDocument(@UploadedFile() file: Express.Multer.File) {
