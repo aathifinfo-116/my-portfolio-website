@@ -13,7 +13,11 @@ import {
   PaginatedResult,
   paginate,
 } from '../../common/dto/pagination-query.dto';
-import { StorageService, StoredFile } from '../uploads/storage.service';
+import {
+  StorageService,
+  StoredFile,
+  isBlobUrl,
+} from '../uploads/storage.service';
 import { DOMAIN_FOLDER } from '../uploads/uploads.controller';
 import {
   CreateDocumentDto,
@@ -133,6 +137,17 @@ export class DocumentsService {
    */
   async resolveForDownload(id: string) {
     const document = await this.findOne(id, { publicOnly: true });
+
+    // Object storage serves the bytes itself. Proxying them through the
+    // function would double the bandwidth and risk the 30s timeout on a
+    // large PDF, so the controller redirects instead.
+    if (isBlobUrl(document.fileUrl)) {
+      void this.documentRepo
+        .increment({ id }, 'downloadCount', 1)
+        .catch(() => undefined);
+      return { document, remoteUrl: document.fileUrl };
+    }
+
     const absolutePath = this.storage.resolveStoredPath(document.fileUrl);
 
     if (!absolutePath) {
@@ -156,7 +171,7 @@ export class DocumentsService {
     // Fire-and-forget: a failed counter must not block the download.
     void this.documentRepo.increment({ id }, 'downloadCount', 1).catch(() => undefined);
 
-    return { document, absolutePath, actualSize };
+    return { document, absolutePath, actualSize, remoteUrl: null };
   }
 
   /**

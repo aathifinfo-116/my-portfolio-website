@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { constants as fsConstants, promises as fs } from 'fs';
 import * as path from 'path';
 import { Repository } from 'typeorm';
-import { StorageService } from '../uploads/storage.service';
+import { StorageService, isBlobUrl } from '../uploads/storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Profile } from './entities/profile.entity';
 
@@ -48,6 +48,13 @@ export class ProfileService {
       throw new NotFoundException('No resume has been uploaded yet.');
     }
 
+    if (isBlobUrl(profile.resumeUrl)) {
+      return {
+        remoteUrl: profile.resumeUrl,
+        fileName: profile.resumeFileName || 'resume.pdf',
+      };
+    }
+
     const absolutePath = this.storage.resolveStoredPath(profile.resumeUrl);
     if (!absolutePath) {
       throw new NotFoundException('The stored resume is no longer available.');
@@ -57,6 +64,7 @@ export class ProfileService {
       await fs.access(absolutePath, fsConstants.R_OK);
       const stats = await fs.stat(absolutePath);
       return {
+        remoteUrl: null,
         absolutePath,
         size: stats.size,
         fileName: profile.resumeFileName || path.basename(absolutePath),

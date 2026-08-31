@@ -27,7 +27,7 @@ export interface JwtConfig {
 }
 
 export interface StorageConfig {
-  driver: 'local' | 'cloudinary' | 's3';
+  driver: 'local' | 'vercel-blob' | 'cloudinary' | 's3';
   uploadDir: string;
   maxUploadBytes: number;
 }

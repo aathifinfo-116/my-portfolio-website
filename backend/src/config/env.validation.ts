@@ -47,7 +47,17 @@ export const envValidationSchema = Joi.object({
   ADMIN_EMAIL: Joi.string().email().required(),
   ADMIN_PASSWORD: Joi.string().min(8).required(),
 
-  STORAGE_DRIVER: Joi.string().valid('local', 'cloudinary', 's3').default('local'),
+  STORAGE_DRIVER: Joi.string()
+    .valid('local', 'vercel-blob', 'cloudinary', 's3')
+    .default('local'),
+  // Injected by Vercel when a Blob store is connected to the project. Required
+  // only when the blob driver is selected; locally it comes from `vercel env
+  // pull` or the store's "read-write token" connection option.
+  // Deliberately optional, not required-when-blob: a Blob store connected
+  // with OIDC authenticates the SDK without this variable, and failing boot
+  // on its absence would break a deployment that works. When it is genuinely
+  // missing, @vercel/blob raises its own explicit error at upload time.
+  BLOB_READ_WRITE_TOKEN: Joi.string().optional(),
   UPLOAD_DIR: Joi.string().default('./uploads'),
   MAX_UPLOAD_MB: Joi.number().default(10),
 });

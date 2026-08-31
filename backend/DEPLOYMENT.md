@@ -214,29 +214,72 @@ Remove it once fixed; the message can name your database host and user.
 
 ---
 
-## ⚠️ Files will not work in production
+## File storage: Vercel Blob
 
-Two independent reasons:
+The function filesystem is read-only and ephemeral, and `uploads/` is
+gitignored, so the local driver cannot serve or accept files on Vercel. The
+`vercel-blob` driver moves both to Vercel Blob.
 
-1. **The function filesystem is read-only and ephemeral.** `StorageService`
-   now returns a 503 with an explanation on Vercel rather than writing to
-   `/tmp` and creating database rows pointing at files that vanish.
+### 1. Create and connect the store
 
-2. **`uploads/` is gitignored — 0 files are tracked.** All 26 files (every
-   study document, project image, the avatar, the resume) are absent from the
-   deployment. Their database rows survive, so the API returns `fileUrl`s that
-   404. `ServeStaticModule` is skipped on Vercel so those return a clean 404
-   rather than an ENOENT error.
+Vercel → Storage → Create → Blob. Then **Connect to Project** → your backend
+project → Production + Preview.
 
-**What still works:** everything database-backed — profile, services,
-projects, certifications, awards, contact form, admin login, and all CRUD
-except file attachment.
+Tick **"Add a read-write token env var to this connection."** Connected
+projects authenticate over OIDC without it, but `BLOB_READ_WRITE_TOKEN` is
+what the local migration script needs. (Alternative: `vercel link` then
+`vercel env pull .env.vercel`.)
 
-| Option | Effort | Result |
-|---|---|---|
-| Commit `uploads/` to git | Low | Existing files serve correctly (read-only is fine for *serving*). New uploads still fail. ~25 MB repo growth. Remove `uploads/**/*` from `.gitignore` and delete the `process.env.VERCEL` guard in `app.module.ts`. |
-| S3 / Cloudinary / Supabase Storage | Medium | Full functionality. `StorageService` is the single seam — implement the driver, no controller changes. |
-| Host on Railway / Render / Fly.io | Low | Persistent disk, no code change. |
+### 2. Migrate the existing files
+
+Dry run first — it uploads nothing and writes nothing:
+
+```bash
+cd backend
+npm run migrate:blob
+```
+
+It lists every file it would upload and every database column it would
+repoint. When the report looks right:
+
+```bash
+npm run migrate:blob -- --apply
+```
+
+This uploads each file under `uploads/` to a blob whose pathname mirrors the
+folder layout (`documents/devops/x.pdf` stays `documents/devops/x.pdf`), then
+rewrites `profile.avatarUrl`, `profile.resumeUrl`, `documents.fileUrl`,
+`projects.imageUrl`, `certifications.documentUrl`, `certifications.badgeUrl`
+and `awards.imageUrl` to the returned public URLs.
+
+`githubUrl`, `liveUrl` and `credentialUrl` are deliberately untouched — those
+are real external links.
+
+The script talks to whatever database your `.env` points at, which for this
+project is the shared Aiven instance. There is no undo, which is why dry run
+is the default. Re-running is safe: pathnames are stable, uploads overwrite,
+and rows already on a blob URL are skipped.
+
+### 3. Switch the driver
+
+On the backend Vercel project:
+
+```
+STORAGE_DRIVER=vercel-blob
+```
+
+Redeploy. New uploads from the admin portal now go to Blob, deletes remove the
+blob, and `/documents/:id/download` and `/profile/resume/download` redirect to
+the blob URL with `?download=1`, which is what makes Blob send
+`Content-Disposition: attachment`.
+
+Set it locally too if you want the admin portal to write to Blob in
+development; leave it unset to keep writing to `uploads/`.
+
+### What this does not fix
+
+`PUBLIC_BASE_URL` is still baked into any *new* local-driver URL, so keep the
+driver consistent across environments or you will mix the two schemes again.
 
 ---
 

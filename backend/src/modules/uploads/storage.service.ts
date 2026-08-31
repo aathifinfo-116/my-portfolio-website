@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { del, put } from '@vercel/blob';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -49,13 +50,30 @@ const ALLOWED_IMAGE_MIME = [
   'image/svg+xml',
 ];
 
+/** Host suffix every public Vercel Blob URL ends with. */
+const BLOB_HOST_SUFFIX = '.public.blob.vercel-storage.com';
+
+/** True for a URL served by Vercel Blob rather than by our own /static route. */
+export function isBlobUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.endsWith(BLOB_HOST_SUFFIX);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Filesystem-backed storage with a driver-shaped API.
+ * Storage with a driver-shaped API.
  *
- * `local` is the implemented default so the project runs with no third-party
- * account. To move to Cloudinary or S3 later, implement `put`/`remove` for that
- * driver - every caller goes through saveDocument/saveImage/removeByUrl and so
- * needs no change.
+ * `local` writes under uploads/ and hands out /static URLs; `vercel-blob`
+ * uploads to Vercel Blob and hands out its absolute public URLs. Both are
+ * reached through the same saveX/removeByUrl surface, so no caller changes
+ * when STORAGE_DRIVER changes.
+ *
+ * The blob driver exists because serverless filesystems are read-only and
+ * ephemeral: on Vercel the local driver cannot store anything that survives
+ * the request.
  */
 @Injectable()
 export class StorageService {
@@ -63,8 +81,10 @@ export class StorageService {
   private readonly uploadDir: string;
   private readonly publicBaseUrl: string;
   private readonly maxBytes: number;
+  private readonly driver: string;
 
   constructor(private readonly config: ConfigService) {
+    this.driver = this.config.get<string>('storage.driver', 'local');
     this.uploadDir = path.resolve(
       this.config.get<string>('storage.uploadDir', './uploads'),
     );
@@ -207,14 +227,18 @@ export class StorageService {
       return cleaned;
     });
 
+    if (this.driver === 'vercel-blob') {
+      return this.putBlob(file, safeSegments, options.keepName === true);
+    }
+
     // Vercel functions run on a read-only, ephemeral filesystem. Writing
     // would throw EROFS, or succeed into /tmp and vanish on the next cold
     // start, leaving a database row pointing at nothing.
     if (process.env.VERCEL) {
       throw new ServiceUnavailableException(
         'File uploads are disabled on this deployment: serverless storage is ' +
-          'ephemeral. Configure a cloud storage driver (S3, Cloudinary, ' +
-          'Supabase Storage) to enable uploads in production.',
+          'ephemeral. Set STORAGE_DRIVER=vercel-blob (or configure S3 / ' +
+          'Cloudinary) to enable uploads in production.',
       );
     }
 
@@ -236,6 +260,42 @@ export class StorageService {
       url: `${this.publicBaseUrl}/static/${urlPath}`,
       originalName: path.basename(file.originalname),
       storedName,
+      size: file.size,
+      mimeType: file.mimetype,
+    };
+  }
+
+  /**
+   * Uploads to Vercel Blob under the same folder layout the local driver
+   * uses, so a store migrated from uploads/ keeps identical pathnames.
+   *
+   * `addRandomSuffix` is the blob equivalent of uniqueName(): without it a
+   * repeat upload of the same name would need allowOverwrite and would
+   * silently replace the earlier file. It is switched off for keepName
+   * uploads, where the sync services match on the filename itself — those
+   * pass allowOverwrite instead, since replacing is the intent there.
+   */
+  private async putBlob(
+    file: Express.Multer.File,
+    segments: string[],
+    keepName: boolean,
+  ): Promise<StoredFile> {
+    const base = path.basename(file.originalname);
+    const extension = path.extname(base).toLowerCase().slice(0, 10);
+    const name = keepName ? base : `${randomUUID()}${extension}`;
+    const pathname = [...segments, name].join('/');
+
+    const blob = await put(pathname, file.buffer, {
+      access: 'public',
+      contentType: file.mimetype,
+      addRandomSuffix: !keepName,
+      allowOverwrite: keepName,
+    });
+
+    return {
+      url: blob.url,
+      originalName: base,
+      storedName: path.basename(new URL(blob.url).pathname),
       size: file.size,
       mimeType: file.mimetype,
     };
@@ -285,6 +345,17 @@ export class StorageService {
    * Missing files are ignored - a failed cleanup must never break the request.
    */
   async removeByUrl(url: string | null | undefined): Promise<void> {
+    if (isBlobUrl(url)) {
+      try {
+        await del(url as string);
+      } catch (error) {
+        this.logger.warn(
+          `Could not delete blob ${url as string}: ${(error as Error).message}`,
+        );
+      }
+      return;
+    }
+
     // Shares resolveStoredPath so percent-encoded names (spaces, ampersands)
     // decode identically here and in the download path. Resolving separately
     // is how deletes silently orphaned every file with a space in its name.

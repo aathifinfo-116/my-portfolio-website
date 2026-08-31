@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Patch,
   Post,
   Req,
@@ -42,14 +43,18 @@ export class ProfileController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { absolutePath, size, fileName } =
+    const { absolutePath, size, fileName, remoteUrl } =
       await this.profileService.resolveResumeForDownload();
 
+    if (remoteUrl) {
+      return res.redirect(HttpStatus.FOUND, `${remoteUrl}?download=1`);
+    }
+
     return streamFileDownload(req, res, {
-      absolutePath,
+      absolutePath: absolutePath as string,
       fileName,
       mimeType: 'application/pdf',
-      size,
+      size: size as number,
     });
   }
 

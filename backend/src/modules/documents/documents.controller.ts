@@ -77,14 +77,21 @@ export class DocumentsController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { document, absolutePath, actualSize } =
+    const { document, absolutePath, actualSize, remoteUrl } =
       await this.documentsService.resolveForDownload(id);
 
+    // Vercel Blob's ?download=1 makes it send Content-Disposition: attachment,
+    // which is the whole reason this endpoint exists rather than linking the
+    // stored URL directly.
+    if (remoteUrl) {
+      return res.redirect(HttpStatus.FOUND, `${remoteUrl}?download=1`);
+    }
+
     return streamFileDownload(req, res, {
-      absolutePath,
+      absolutePath: absolutePath as string,
       fileName: document.fileName,
       mimeType: document.mimeType,
-      size: actualSize,
+      size: actualSize as number,
     });
   }
 

@@ -97,6 +97,12 @@ export function resolveFileUrl(url: string | null | undefined): string | null {
   if (/^https?:\/\//i.test(url)) {
     if (trimmedBase) return url;
 
+    // Only our own /static URLs may have their host stripped. Object-storage
+    // URLs (Vercel Blob, S3) are absolute by nature and live on a different
+    // host entirely — rewriting one to a bare path would point it at the dev
+    // server, which has never heard of it.
+    if (!url.includes('/static/')) return url;
+
     // No explicit API origin: strip the host so the dev proxy handles it.
     try {
       const parsed = new URL(url);
